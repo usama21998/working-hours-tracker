@@ -77,4 +77,25 @@ describe('POST /api/login', () => {
     });
     expect(runFetch).toHaveBeenCalledWith({ manual: true });
   });
+
+  it('waits for the first fetch before answering', async () => {
+    verify.mockResolvedValue(undefined);
+    let finish!: () => void;
+    vi.mocked(runFetch).mockReturnValueOnce(new Promise((res) => (finish = () => res({} as never))));
+    let answered = false;
+    const res = post({ userId: 'u1', password: 'p1' }).then((r) => ((answered = true), r));
+    await vi.waitFor(() => expect(runFetch).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 20));
+    expect(answered).toBe(false);
+    finish();
+    expect((await res).status).toBe(200);
+  });
+
+  it('a failed first fetch still logs you in', async () => {
+    verify.mockResolvedValue(undefined);
+    vi.mocked(runFetch).mockRejectedValueOnce(new Error('Decibel did not return a PDF'));
+    const res = await post({ userId: 'u1', password: 'p1' });
+    expect(res.status).toBe(200);
+    expect(await hasCredentials()).toBe(true);
+  });
 });

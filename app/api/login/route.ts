@@ -29,6 +29,8 @@ export async function POST(req: Request): Promise<Response> {
 
   await saveCredentials({ userId, password });
   await saveState({ ...(await loadState()), lastError: null, lastErrorAt: null, authBlocked: false });
-  void runFetch({ manual: true }).catch(() => null);
+  // Fetch before answering so the tracker opens with data. A failed fetch still logs you in:
+  // its error is saved in state and shown on the page.
+  await runFetch({ manual: true }).catch(() => null);
   return Response.json({ ok: true });
 }

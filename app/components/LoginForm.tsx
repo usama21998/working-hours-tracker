@@ -89,8 +89,8 @@ export function LoginForm({ defaultUserId, next }: { defaultUserId: string; next
         >
           <div className="flex flex-col items-center gap-3 rounded-xl bg-white px-8 py-6 text-center shadow-lg dark:bg-neutral-900">
             <span className="h-10 w-10 animate-spin rounded-full border-4 border-neutral-300 border-t-neutral-800 dark:border-neutral-700 dark:border-t-neutral-100" />
-            <p className="font-medium">Signing in to Decibel…</p>
-            <p className="text-sm opacity-60">This can take up to a minute.</p>
+            <p className="font-medium">Signing in and fetching your timesheet…</p>
+            <p className="text-sm opacity-60">This can take a couple of minutes.</p>
           </div>
         </div>
       )}
