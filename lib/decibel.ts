@@ -11,6 +11,52 @@ export class DecibelAuthError extends Error {
   }
 }
 
+/** Decibel is down, unreachable or too slow. Not the user's fault, so scheduled fetches carry on. */
+export class DecibelUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'DecibelUnavailableError';
+  }
+}
+
+export const UNAVAILABLE = {
+  unreachable: "Couldn't reach Decibel. It may be down, or this PC is offline. Try again later.",
+  slow: "Decibel didn't respond in time. It may be down or very slow. Try again later.",
+  signIn: "Decibel didn't finish signing you in. It may be down or very slow. Try again later.",
+  noReport: "Decibel didn't send the timesheet within 2 minutes. It may be down or busy. Try again later.",
+  serverError: (status: number) => `Decibel had a server error (HTTP ${status}). Try again later.`,
+  loginLimit: "Signing in to Decibel took longer than 90 seconds. It may be down or very slow. Try again later.",
+  fetchLimit: "Fetching from Decibel took longer than 3 minutes. It may be down or very slow. Try again later.",
+};
+
+/** Hard limits for a whole sign-in check and for one timesheet download. */
+const LOGIN_MAX = 90_000;
+const FETCH_MAX = 180_000;
+
+/** Reject with DecibelUnavailableError(message) if `work` isn't done within `ms`; `onTimeout` cleans up. */
+export function withDeadline<T>(work: Promise<T>, ms: number, message: string, onTimeout?: () => unknown): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new DecibelUnavailableError(message));
+      void Promise.resolve(onTimeout?.()).catch(() => null);
+    }, ms);
+  });
+  work.catch(() => null); // a late failure after the deadline must not become an unhandled rejection
+  return Promise.race([work, deadline]).finally(() => clearTimeout(timer));
+}
+
+/** Turn a Playwright/network error into a message a person can act on (no call logs). */
+export function friendlyError(e: unknown): Error {
+  if (e instanceof DecibelAuthError || e instanceof DecibelUnavailableError) return e;
+  const message = e instanceof Error ? e.message : String(e);
+  if (/net::ERR_|ECONNREFUSED|ENOTFOUND|ECONNRESET|EAI_AGAIN/.test(message)) return new DecibelUnavailableError(UNAVAILABLE.unreachable);
+  if ((e instanceof Error && e.name === 'TimeoutError') || /Timeout \d+ms exceeded/.test(message)) {
+    return new DecibelUnavailableError(UNAVAILABLE.slow);
+  }
+  return new Error(message.split('\n')[0]);
+}
+
 export type DecibelCreds = { userId: string; password: string };
 
 const LOGIN_URL = 'https://bpo.mydecibel.com/login.aspx';
@@ -63,7 +109,9 @@ async function signIn(page: Page, creds: DecibelCreds): Promise<void> {
       .allInnerTexts()
       .catch(() => [] as string[]);
     const message = shown.map((s) => s.trim()).filter(Boolean).join(' | ').slice(0, 200);
-    throw new DecibelAuthError(message ? `Decibel sign-in was rejected: ${message}` : undefined);
+    // Only a message from Decibel means the login was rejected; a page that just hangs means Decibel is struggling.
+    if (!message) throw new DecibelUnavailableError(UNAVAILABLE.signIn);
+    throw new DecibelAuthError(`Decibel sign-in was rejected: ${message}`);
   }
 }
 
@@ -131,24 +179,33 @@ async function saveDebugScreenshot(page: Page): Promise<void> {
   }
 }
 
-/** Sign in to Decibel and nothing else. Throws DecibelAuthError if the credentials are rejected. */
-export async function verifyLogin(creds: DecibelCreds): Promise<void> {
+type Browser = import('playwright').Browser;
+
+/** Run `work` in a fresh headless browser, within `max` ms, always closing the browser. Errors come out friendly. */
+async function withBrowser<T>(max: number, limitMessage: string, work: (browser: Browser) => Promise<T>): Promise<T> {
   const { chromium } = await import('playwright');
   const browser = await chromium.launch({ headless: true });
   try {
+    return await withDeadline(work(browser), max, limitMessage, () => browser.close());
+  } catch (e) {
+    throw friendlyError(e);
+  } finally {
+    await browser.close().catch(() => null);
+  }
+}
+
+/** Sign in to Decibel and nothing else. Throws DecibelAuthError if the credentials are rejected. */
+export async function verifyLogin(creds: DecibelCreds): Promise<void> {
+  await withBrowser(LOGIN_MAX, UNAVAILABLE.loginLimit, async (browser) => {
     const page = await (await browser.newContext()).newPage();
     page.setDefaultTimeout(60_000);
     await signIn(page, creds);
-  } finally {
-    await browser.close();
-  }
+  });
 }
 
 /** Download the AT_EmpTimeSheet PDF for `from`..`to` ('YYYY-MM-DD'). Read-only toward Decibel. */
 export async function downloadTimesheet(from: string, to: string, creds: DecibelCreds): Promise<Uint8Array> {
-  const { chromium } = await import('playwright');
-  const browser = await chromium.launch({ headless: true });
-  try {
+  return withBrowser(FETCH_MAX, UNAVAILABLE.fetchLimit, async (browser) => {
     const context = await browser.newContext({ acceptDownloads: true });
     const page = await context.newPage();
     page.setDefaultTimeout(60_000);
@@ -161,20 +218,22 @@ export async function downloadTimesheet(from: string, to: string, creds: Decibel
     await setDate(page, SEL.to, to);
 
     const watcher = waitForPdf(page);
-    let serverError: number | null = null;
-    page.on('response', (r) => {
-      if (r.url().startsWith(REPORT_URL) && r.request().method() === 'POST' && r.status() >= 500) serverError = r.status();
-    });
     let timer: NodeJS.Timeout | undefined;
+    let failNow!: (e: Error) => void;
+    const failed = new Promise<never>((_, rej) => (failNow = rej));
+    page.on('response', (r) => {
+      if (r.url().startsWith(REPORT_URL) && r.request().method() === 'POST' && r.status() >= 500) {
+        failNow(new DecibelUnavailableError(UNAVAILABLE.serverError(r.status())));
+      }
+    });
     try {
-      await page.click(SEL.getReport);
+      // Don't await the click: it waits for the post-back navigation, which never "finishes" when Decibel
+      // answers with a PDF or hangs. The PDF watcher and REPORT_TIMEOUT decide instead.
+      page.click(SEL.getReport).catch(() => null);
       const timeout = new Promise<never>((_, rej) => {
-        timer = setTimeout(
-          () => rej(new Error(serverError ? `Decibel report failed (HTTP ${serverError})` : 'Decibel did not return a PDF')),
-          REPORT_TIMEOUT,
-        );
+        timer = setTimeout(() => rej(new DecibelUnavailableError(UNAVAILABLE.noReport)), REPORT_TIMEOUT);
       });
-      return await Promise.race([watcher.pdf, timeout]);
+      return await Promise.race([watcher.pdf, timeout, failed]);
     } catch (e) {
       await saveDebugScreenshot(page);
       throw e;
@@ -182,7 +241,5 @@ export async function downloadTimesheet(from: string, to: string, creds: Decibel
       clearTimeout(timer);
       watcher.dispose();
     }
-  } finally {
-    await browser.close();
-  }
+  });
 }

@@ -3,7 +3,7 @@ import { FIXTURE_PDF, hasFixture } from './fixture';
 import { mkdtemp, readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { DecibelAuthError } from '@/lib/decibel';
+import { DecibelAuthError, DecibelUnavailableError } from '@/lib/decibel';
 import { AUTH_MESSAGE, NOT_SIGNED_IN, runFetch } from '@/lib/fetch-job';
 import { loadMonth, loadState, saveMonth } from '@/lib/store';
 
@@ -52,6 +52,12 @@ describe('runFetch', () => {
     const s = await runFetch({ manual: false, now: NOW, download: vi.fn().mockRejectedValue(new Error('timeout')), creds });
     expect(s).toMatchObject({ lastError: 'timeout', authBlocked: false, lastErrorAt: NOW.toISOString() });
     expect(await loadMonth('2026-11')).toEqual([]);
+  });
+
+  it('Decibel down records its message and keeps the schedule', async () => {
+    const down = vi.fn().mockRejectedValue(new DecibelUnavailableError('Decibel is down.'));
+    const s = await runFetch({ manual: false, now: NOW, download: down, creds });
+    expect(s).toMatchObject({ lastError: 'Decibel is down.', authBlocked: false });
   });
 
   it('missing credentials block without calling Decibel', async () => {

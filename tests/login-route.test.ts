@@ -17,7 +17,7 @@ vi.mock('@/lib/credentials', async (orig) => {
 
 import { POST } from '@/app/api/login/route';
 import { hasCredentials, loadCredentials } from '@/lib/credentials';
-import { DecibelAuthError, verifyLogin } from '@/lib/decibel';
+import { DecibelAuthError, DecibelUnavailableError, verifyLogin } from '@/lib/decibel';
 import { runFetch } from '@/lib/fetch-job';
 import { loadState, saveState } from '@/lib/store';
 
@@ -47,6 +47,14 @@ describe('POST /api/login', () => {
     const res = await post({ userId: 'u1', password: 'p1' });
     expect(res.status).toBe(401);
     expect(await res.json()).toEqual({ ok: false, error: 'Decibel sign-in was rejected: Invalid password' });
+    expect(await hasCredentials()).toBe(false);
+  });
+
+  it('Decibel down is 503 with a plain message', async () => {
+    verify.mockRejectedValue(new DecibelUnavailableError('Decibel is down.'));
+    const res = await post({ userId: 'u1', password: 'p1' });
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ ok: false, error: 'Decibel is down.' });
     expect(await hasCredentials()).toBe(false);
   });
 

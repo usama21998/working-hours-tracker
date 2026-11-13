@@ -1,5 +1,5 @@
 import { saveCredentials } from '@/lib/credentials';
-import { DecibelAuthError, verifyLogin } from '@/lib/decibel';
+import { DecibelAuthError, DecibelUnavailableError, verifyLogin } from '@/lib/decibel';
 import { runFetch } from '@/lib/fetch-job';
 import { loadState, saveState } from '@/lib/store';
 
@@ -22,6 +22,7 @@ export async function POST(req: Request): Promise<Response> {
     await verifyLogin({ userId, password });
   } catch (e) {
     if (e instanceof DecibelAuthError) return Response.json({ ok: false, error: e.message }, { status: 401 });
+    if (e instanceof DecibelUnavailableError) return Response.json({ ok: false, error: e.message }, { status: 503 });
     const raw = e instanceof Error ? e.message : String(e);
     const message = raw.split(password).join('***').split(userId).join('***');
     return Response.json({ ok: false, error: `Could not reach Decibel: ${message}` }, { status: 502 });
