@@ -1,14 +1,15 @@
 'use client';
 
 import { useState } from 'react';
-import { formatHHMM, formatSigned } from '@/lib/time';
+import { formatClock12, formatHHMM, formatSigned } from '@/lib/time';
 import type { DayResult } from '@/lib/types';
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const CAP_MIN = 120;
 
 function cellStyle(d: DayResult | undefined): React.CSSProperties {
-  if (!d || (d.kind !== 'work' && d.kind !== 'extra')) return {};
+  const live = d?.kind === 'today' && d.actualMin !== null;
+  if (!d || (d.kind !== 'work' && d.kind !== 'extra' && !live)) return {};
   const strength = Math.min(Math.abs(d.contributionMin), CAP_MIN) / CAP_MIN;
   const alpha = d.contributionMin === 0 ? 0.08 : 0.15 + 0.5 * strength;
   const rgb = d.contributionMin < 0 ? '220, 38, 38' : '22, 163, 74';
@@ -21,7 +22,7 @@ function label(d: DayResult): string {
     case 'extra':
       return formatSigned(d.contributionMin);
     case 'today':
-      return 'today';
+      return d.actualMin !== null ? formatSigned(d.contributionMin) : 'today';
     case 'flagged':
       return '⚠ no out';
     case 'future':
@@ -69,7 +70,8 @@ export function Calendar({ month, days, today, compact = false }: { month: strin
 
       {picked && (
         <div className="mt-3 rounded-lg bg-neutral-500/10 p-3 text-sm" aria-live="polite">
-          <b>{picked.date}</b> · In {picked.timeIn ?? '—'} · Out {picked.timeOut ?? '—'} · Standard{' '}
+          <b>{picked.date}</b> · In {picked.timeIn ? formatClock12(picked.timeIn) : '—'} · Out{' '}
+          {picked.timeOut ? formatClock12(picked.timeOut) : picked.kind === 'today' && picked.actualMin !== null ? 'now (live)' : '—'} · Standard{' '}
           {picked.standardMin !== null ? formatHHMM(picked.standardMin) : '—'} · Actual{' '}
           {picked.actualMin !== null ? formatHHMM(picked.actualMin) : '—'} · {picked.remark || 'No remark'}
         </div>

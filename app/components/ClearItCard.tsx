@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { formatHHMM } from '@/lib/time';
+import { formatClock12, formatHHMM } from '@/lib/time';
 import type { ClearIt } from '@/lib/types';
 
 export function ClearItCard({ clearIt, checkIn, compact = false }: { clearIt: ClearIt; checkIn: string | null; compact?: boolean }) {
@@ -37,7 +37,7 @@ export function ClearItCard({ clearIt, checkIn, compact = false }: { clearIt: Cl
       ) : (
         <>
           <div className={`${compact ? 'text-lg' : 'text-2xl'} font-semibold`}>
-            {clearIt.leaveBy ? `Leave by ${clearIt.leaveBy} today` : "Enter today's check-in to see your leave time"}
+            {clearIt.leaveBy ? `Leave by ${formatClock12(clearIt.leaveBy)} today` : "Enter today's check-in to see your leave time"}
           </div>
           {clearIt.perDayMin !== null && (
             <div className="mt-1 text-sm opacity-80">

@@ -15,14 +15,19 @@ function weekdaysAfter(today: string): number {
   return n;
 }
 
-/** What it takes to bring a negative month balance back to zero. */
+/**
+ * What it takes to bring a negative month balance back to zero. Works from the balance before today,
+ * so today's live hours (still at work) are not counted twice.
+ */
 export function computeClearIt(summary: MonthSummary, today: string, checkIn: string | null): ClearIt {
   const remainingDays = weekdaysAfter(today);
-  if (summary.balanceMin >= 0) {
-    return { leaveBy: null, perDayMin: null, remainingDays, surplusMin: summary.balanceMin };
+  const todayDay = summary.days.find((d) => d.date === today);
+  const beforeToday = summary.balanceMin - (todayDay?.kind === 'today' ? todayDay.contributionMin : 0);
+  if (beforeToday >= 0) {
+    return { leaveBy: null, perDayMin: null, remainingDays, surplusMin: beforeToday };
   }
-  const deficit = -summary.balanceMin;
-  const todayRequired = summary.days.find((d) => d.date === today)?.standardMin ?? DEFAULT_DAY_MIN;
+  const deficit = -beforeToday;
+  const todayRequired = todayDay?.standardMin ?? DEFAULT_DAY_MIN;
   return {
     leaveBy: checkIn ? minToClock(clockToMin(checkIn) + todayRequired + deficit) : null,
     perDayMin: remainingDays > 0 ? Math.ceil(deficit / remainingDays) : null,

@@ -4,7 +4,7 @@ import { connection } from 'next/server';
 import { hasCredentials } from '@/lib/credentials';
 import { Suspense } from 'react';
 import { getMonthView } from '@/lib/view';
-import { localDateISO } from '@/lib/time';
+import { localDateISO, minutesOfDay } from '@/lib/time';
 import { AutoRefresh } from '../components/AutoRefresh';
 import { BalanceCard } from '../components/BalanceCard';
 import { Calendar } from '../components/Calendar';
@@ -17,15 +17,16 @@ export const metadata: Metadata = { title: 'Hours' };
 /** Compact view of the current month for the small desktop window (scripts/start-widget.ps1). */
 async function Widget() {
   await connection(); // "today" must be computed per request, never prerendered
-  const today = localDateISO(new Date());
+  const now = new Date();
+  const today = localDateISO(now);
   const month = today.slice(0, 7);
-  const view = await getMonthView(month, today);
+  const view = await getMonthView(month, today, minutesOfDay(now));
   if (!(await hasCredentials()) || view.state.authBlocked) redirect('/login?next=/widget');
   const title = new Date(`${month}-01T00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
 
   return (
     <FetchProvider>
-      <AutoRefresh minutes={5} />
+      <AutoRefresh minutes={1} />
       <header className="mb-2 flex items-center justify-between">
         <h1 className="font-semibold">{title}</h1>
         <a href="/" target="_blank" rel="noreferrer" className="text-xs opacity-60 hover:opacity-100">

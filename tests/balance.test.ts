@@ -82,3 +82,44 @@ describe('today and edge cases', () => {
     expect(s.days.map((d) => d.date)).toEqual(['2026-11-03', '2026-11-05']);
   });
 });
+
+describe('live today', () => {
+  const live = (checkIn: string | null, nowMin: number) => ({ checkIn, nowMin });
+
+  it('counts today from check-in until now', () => {
+    // in 09:30, now 15:30 -> 6:00 worked of 9:00 -> −3:00
+    const s = computeMonth('2026-11', [worked('2026-11-11', 560), row('2026-11-12', { timeIn: '09:30', standardMin: 540 })], '2026-11-12', live('09:30', 930));
+    expect(s.days[1]).toMatchObject({ kind: 'today', actualMin: 360, requiredMin: 540, contributionMin: -180 });
+    expect(s.balanceMin).toBe(20 - 180);
+    expect(s).toMatchObject({ workedMin: 920, requiredMin: 1080, countedDays: 2 });
+  });
+
+  it('adds today when Decibel has no row yet, using the saved check-in', () => {
+    const s = computeMonth('2026-11', [worked('2026-11-11', 540)], '2026-11-12', live('10:00', 1170));
+    expect(s.days.map((d) => d.date)).toEqual(['2026-11-11', '2026-11-12']);
+    expect(s.days[1]).toMatchObject({ kind: 'today', timeIn: '10:00', actualMin: 570, contributionMin: 30 });
+    expect(s.balanceMin).toBe(30);
+  });
+
+  it('weekend today with no Decibel row counts fully as extra', () => {
+    const s = computeMonth('2026-11', [], '2026-11-14', live('10:00', 720));
+    expect(s.days[0]).toMatchObject({ requiredMin: 0, contributionMin: 120 });
+    expect(s).toMatchObject({ balanceMin: 120, extraDays: 1, countedDays: 0 });
+  });
+
+  it('never counts negative time before check-in', () => {
+    const s = computeMonth('2026-11', [], '2026-11-12', live('10:00', 540));
+    expect(s.days[0]).toMatchObject({ actualMin: 0, contributionMin: -540 });
+  });
+
+  it('real check-out from Decibel wins over the live count', () => {
+    const s = computeMonth('2026-11', [worked('2026-11-12', 600)], '2026-11-12', live('10:00', 1300));
+    expect(s.days[0]).toMatchObject({ kind: 'work', contributionMin: 60 });
+  });
+
+  it('without a check-in, today stays neutral', () => {
+    const s = computeMonth('2026-11', [worked('2026-11-11', 500)], '2026-11-12', live(null, 900));
+    expect(s.days.map((d) => d.kind)).toEqual(['work']);
+    expect(s.balanceMin).toBe(-40);
+  });
+});

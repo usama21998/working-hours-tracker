@@ -46,3 +46,16 @@ describe('getMonthView', () => {
     expect(v.checkIn).toBe('10:10');
   });
 });
+
+describe('getMonthView live today', () => {
+  it('counts today up to now from the saved check-in while Decibel has no check-out', async () => {
+    await saveMonth('2026-11', [
+      { date: '2026-11-11', timeIn: '10:00', timeOut: '18:00', standardMin: 540, actualMin: 480, remark: '' },
+    ]);
+    await saveCheckIn('2026-11-12', '09:30');
+    const v = await getMonthView('2026-11', '2026-11-12', 16 * 60 + 30); // now 16:30 -> 7:00 worked
+    if (v.empty) throw new Error('expected data');
+    expect(v.summary.balanceMin).toBe(-60 - 120);
+    expect(v.clearIt?.leaveBy).toBe('19:30');
+  });
+});

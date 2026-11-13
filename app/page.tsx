@@ -3,7 +3,8 @@ import { connection } from 'next/server';
 import { hasCredentials } from '@/lib/credentials';
 import { Suspense } from 'react';
 import { getMonthView } from '@/lib/view';
-import { localDateISO } from '@/lib/time';
+import { localDateISO, minutesOfDay } from '@/lib/time';
+import { AutoRefresh } from './components/AutoRefresh';
 import { BalanceCard } from './components/BalanceCard';
 import { Calendar } from './components/Calendar';
 import { ClearItCard } from './components/ClearItCard';
@@ -25,15 +26,17 @@ function monthName(month: string): string {
 async function Tracker({ searchParams }: { searchParams: PageProps<'/'>['searchParams'] }) {
   const sp = await searchParams;
   await connection(); // "today" must be computed per request, never prerendered
-  const today = localDateISO(new Date());
+  const now = new Date();
+  const today = localDateISO(now);
   const month = typeof sp.month === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(sp.month) ? sp.month : today.slice(0, 7);
-  const view = await getMonthView(month, today);
+  const view = await getMonthView(month, today, minutesOfDay(now));
   if (!(await hasCredentials()) || view.state.authBlocked) redirect('/login?next=/');
 
   const title = monthName(month);
 
   return (
     <FetchProvider>
+      <AutoRefresh minutes={1} />
       <MonthNav title={title} prevHref={`/?month=${shiftMonth(month, -1)}`} nextHref={`/?month=${shiftMonth(month, 1)}`} />
 
       {view.empty ? (

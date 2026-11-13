@@ -40,3 +40,16 @@ export function minToClock(min: number): string {
   const h = Math.floor(min / 60);
   return `${String(h).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
 }
+
+/** 'HH:MM' (24h) or minutes since midnight -> '7:05 PM'. Times past midnight wrap ('24:10' -> '12:10 AM'). */
+export function formatClock12(t: string | number): string {
+  const min = typeof t === 'number' ? t : clockToMin(t);
+  const h24 = Math.floor(min / 60) % 24;
+  const h = h24 % 12 === 0 ? 12 : h24 % 12;
+  return `${h}:${String(min % 60).padStart(2, '0')} ${h24 < 12 ? 'AM' : 'PM'}`;
+}
+
+/** Minutes since local midnight for a Date. */
+export function minutesOfDay(d: Date): number {
+  return d.getHours() * 60 + d.getMinutes();
+}

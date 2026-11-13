@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clockToMin, formatHHMM, formatSigned, isValidHHMM, localDateISO, minToClock, parseHHMM } from '@/lib/time';
+import { clockToMin, formatClock12, formatHHMM, formatSigned, isValidHHMM, localDateISO, minToClock, minutesOfDay, parseHHMM } from '@/lib/time';
 
 describe('parseHHMM', () => {
   it('parses hours and minutes', () => expect(parseHHMM('08:27')).toBe(507));
@@ -30,4 +30,15 @@ describe('isValidHHMM', () => {
   it.each([
     ['09:52', true], ['9:52', true], ['9.5', false], ['25:00', false], ['09:60', false], ['', false],
   ])('%s -> %s', (s, ok) => expect(isValidHHMM(s)).toBe(ok));
+});
+
+describe('formatClock12', () => {
+  it.each([
+    ['00:05', '12:05 AM'], ['09:45', '9:45 AM'], ['12:00', '12:00 PM'], ['19:27', '7:27 PM'], ['24:10', '12:10 AM'],
+  ])('%s -> %s', (t, out) => expect(formatClock12(t)).toBe(out));
+  it('accepts minutes', () => expect(formatClock12(1167)).toBe('7:27 PM'));
+});
+
+describe('minutesOfDay', () => {
+  it('counts minutes since local midnight', () => expect(minutesOfDay(new Date(2026, 10, 13, 14, 7))).toBe(847));
 });

@@ -38,3 +38,14 @@ describe('computeClearIt', () => {
     expect(computeClearIt(summary(-147), '2026-11-30', null)).toMatchObject({ remainingDays: 0, perDayMin: null });
   });
 });
+
+describe('computeClearIt with live today', () => {
+  it('works from the balance before today so live hours are not counted twice', () => {
+    const today: DayResult = {
+      date: '2026-11-12', timeIn: '09:00', timeOut: null, standardMin: 540, actualMin: 300, remark: '',
+      kind: 'today', requiredMin: 540, contributionMin: -240, runningMin: -300,
+    };
+    // before today −1:00 -> 09:00 + 9:00 + 1:00 = 19:00, whatever the live count says
+    expect(computeClearIt(summary(-300, [today]), '2026-11-12', '09:00')).toMatchObject({ leaveBy: '19:00', perDayMin: 5 });
+  });
+});
